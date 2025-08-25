@@ -1,0 +1,384 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+  Ollama Chat
+{% endblock %}
+
+{% block content %}
+  <div class="flex h-screen relative">
+    <!-- Left Sidebar -->
+    <div class="w-64 bg-gray-900 text-white p-4 flex-shrink-0 overflow-y-auto">
+      <h1 class="text-2xl font-bold mb-6 flex items-center space-x-2">
+        <img src="{% static 'chatapp/images/logo.png' %}" alt="Logo" class="h-8" />
+        <span>Ollama Chat</span>
+      </h1>
+      <div class="mb-4">
+        <button id="new-chat-btn" class="text-blue-400 hover:underline">+ New Chat</button>
+      </div>
+      <div>
+        {% for chat in chats %}
+          <div class="flex justify-between items-center text-gray-300 hover:text-white mb-1">
+            <a href="{% url 'chat_with_session' chat.pk %}" class="truncate">{{ chat.title }} {% if not chat.user %}(guest){% endif %}</a>
+            <form action="{% url 'delete_chat' chat.pk %}" method="post">
+              {% csrf_token %}
+              <button type="submit" class="text-red-500 hover:text-red-300">x</button>
+            </form>
+          </div>
+        {% empty %}
+          <p class="text-gray-500">No chats yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col bg-gray-800 p-4 overflow-hidden relative">
+      <!-- Toggle Profile Button -->
+      <div class="absolute top-4 right-4 z-50">
+        <button onclick="toggleProfile()" class="text-white bg-gray-700 px-2 py-1 rounded hover:bg-gray-600 shadow">☰ Profile</button>
+      </div>
+
+      <div class="flex items-center space-x-4 mb-4">
+        <label for="model" class="text-gray-400">Model:</label>
+        <select id="model" name="model" class="bg-gray-700 text-white rounded p-1">
+          <option value="phi:latest" {% if chat.model == 'phi:latest' %}selected{% endif %}>Phi Latest</option>
+          <option value="qwen3:0.6b" {% if chat.model == 'qwen3:0.6b' %}selected{% endif %}>Qwen 0.6B</option>
+          <option value="hi:latest" {% if chat.model == 'hi:latest' %}selected{% endif %}>Hi Latest</option>
+        </select>
+      </div>
+
+      <div class="flex-1 overflow-y-auto space-y-4 pr-4" id="chat-messages">
+        {% if error %}
+          <div class="p-4 bg-red-600 rounded text-white">
+            <p class="font-bold">Error:</p>
+            <p>{{ error }}</p>
+          </div>
+        {% endif %}
+        {% for message in messages %}
+          {% if message.sender == 'user' %}
+            <!-- User message - right side -->
+            <div class="flex justify-end mb-4">
+              <div class="bg-blue-600 text-white p-3 rounded-lg max-w-md lg:max-w-2xl">
+                <div class="whitespace-pre-wrap">{{ message.content }}</div>
+                <span class="text-xs text-blue-200 mt-1 block">{{ message.timestamp|date:"H:i" }}</span>
+              </div>
+            </div>
+          {% else %}
+            <!-- Bot message - left side -->
+            <div class="flex justify-start mb-4">
+              <div class="{% if message.content|slice:':8' == '[Error: ' or '[No response' in message.content or '[Ollama error:' in message.content %}bg-red-600{% else %}bg-gray-700{% endif %} text-white p-3 rounded-lg max-w-md lg:max-w-2xl">
+                <div class="flex items-center mb-1">
+                  <span class="text-xs text-gray-300">{{ message.model|default:chat.model }}</span>
+                </div>
+                <div class="whitespace-pre-wrap">{{ message.content }}</div>
+                <span class="text-xs text-gray-400 mt-1 block">{{ message.timestamp|date:"H:i" }}</span>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <form id="chat-form" class="mt-4 flex items-center space-x-2 bg-gray-900 p-3 rounded-lg">
+        {% csrf_token %}
+        <input type="text" id="message-input" name="prompt" placeholder="Type your message..." class="flex-1 p-3 rounded-lg bg-gray-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600" required />
+        <button type="submit" id="send-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-medium transition-colors">Send</button>
+      </form>
+    </div>
+
+    <!-- Slide-in Profile Panel -->
+    <div id="profilePanel" class="fixed top-0 right-0 h-full w-80 bg-gray-900 text-white p-6 shadow-xl transform translate-x-full transition-transform duration-300 z-40">
+      {% if request.user.is_authenticated %}
+        <div class="flex flex-col items-center space-y-4">
+          {% if request.user.profile_picture %}
+            <img src="{{ request.user.profile_picture.url }}" alt="Profile Pic" class="w-20 h-20 rounded-full border-4 border-blue-500 shadow" />
+          {% else %}
+            <img src="{% static 'chatapp/images/profile.jpg' %}" alt="Profile Pic" class="w-20 h-20 rounded-full border-4 border-gray-600 shadow" />
+          {% endif %}
+          <h2 class="text-xl font-bold">{{ request.user.username }}</h2>
+          <p class="text-gray-400">{{ request.user.email }}</p>
+          <a href="{% url 'profile' %}" class="text-blue-400 hover:underline">Edit Profile</a>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="text-red-400 hover:underline">Logout</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="flex flex-col items-center space-y-2">
+          <img src="{% static 'chatapp/images/guest.png' %}" class="w-20 h-20 rounded-full border-2 border-gray-600" />
+          <h2 class="text-xl font-bold">Guest</h2>
+          <button id="guest-login-btn" class="text-green-400 hover:underline">Login</button>
+        </div>
+      {% endif %}
+      <button onclick="toggleProfile()" class="mt-6 text-sm text-gray-400 hover:text-white">Hide Profile ✕</button>
+    </div>
+  </div>
+
+  <script>
+
+    
+    // Auto-scroll to bottom of chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Handle model change
+    document.getElementById('model').addEventListener('change', function() {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '{% url "change_model" chat.pk %}';
+      
+      const csrfToken = document.createElement('input');
+      csrfToken.type = 'hidden';
+      csrfToken.name = 'csrfmiddlewaretoken';
+      csrfToken.value = '{{ csrf_token }}';
+      
+      const modelInput = document.createElement('input');
+      modelInput.type = 'hidden';
+      modelInput.name = 'model';
+      modelInput.value = this.value;
+      
+      form.appendChild(csrfToken);
+      form.appendChild(modelInput);
+      document.body.appendChild(form);
+      form.submit();
+    });
+    
+    // Guest prompt functionality
+    let isAuthenticated = {{ user.is_authenticated|yesno:"true,false" }};
+    
+    function showGuestPrompt() {
+      const modal = document.getElementById('guest-prompt-modal');
+      if (modal) {
+        modal.classList.remove('hidden');
+      }
+    }
+    
+    function hideGuestPrompt() {
+      const modal = document.getElementById('guest-prompt-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+    }
+    
+    // New chat button
+    document.getElementById('new-chat-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!isAuthenticated) {
+        showGuestPrompt();
+      } else {
+        window.location.href = '{% url "new_chat" %}';
+      }
+    });
+    
+    // Guest login button in profile
+    const guestLoginBtn = document.getElementById('guest-login-btn');
+    if (guestLoginBtn) {
+      guestLoginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showGuestPrompt();
+      });
+    }
+    
+    // Continue as guest button
+    document.addEventListener('DOMContentLoaded', () => {
+      const continueGuestBtn = document.getElementById('continue-guest');
+      if (continueGuestBtn) {
+        continueGuestBtn.addEventListener('click', () => {
+          hideGuestPrompt();
+          window.location.href = '{% url "new_chat" %}';
+        });
+      }
+      
+      // Dismiss modal button
+      const dismissBtn = document.getElementById('dismiss-modal');
+      if (dismissBtn) {
+        dismissBtn.addEventListener('click', () => {
+          localStorage.setItem('guestModalDismissed', 'true');
+          hideGuestPrompt();
+        });
+      }
+    });
+    
+    // Chat form submission
+    document.getElementById('chat-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const input = document.getElementById('message-input');
+      const sendBtn = document.getElementById('send-btn');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      // Add user message immediately
+      addMessage('user', message);
+      input.value = '';
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+      
+      // Add AI loading message
+      const aiMessageId = addMessage('bot', '', true);
+      
+      try {
+        const response = await fetch('{% url "stream_response" chat.pk %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': getCookie('csrftoken')
+          },
+          body: `prompt=${encodeURIComponent(message)}`
+        });
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let aiResponse = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          aiResponse += chunk;
+          
+          // Filter out thinking tags in real-time
+          let filteredResponse = aiResponse;
+          if (filteredResponse.includes('<think>')) {
+            filteredResponse = filteredResponse.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          }
+          
+          // Decode HTML entities
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = filteredResponse;
+          filteredResponse = tempDiv.textContent || tempDiv.innerText || '';
+          
+          updateMessage(aiMessageId, filteredResponse);
+        }
+      } catch (error) {
+        updateMessage(aiMessageId, '[Error: Failed to get response]');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
+    });
+    
+    function addMessage(sender, content, isLoading = false) {
+      const messagesContainer = document.getElementById('chat-messages');
+      const messageId = 'msg-' + Date.now();
+      
+      const currentModel = document.getElementById('model').value;
+      const messageHtml = sender === 'user' ? `
+        <div class="flex justify-end mb-4">
+          <div class="bg-blue-600 text-white p-3 rounded-lg max-w-md lg:max-w-2xl">
+            <p>${content}</p>
+          </div>
+        </div>
+      ` : `
+        <div class="flex justify-start mb-4">
+          <div class="bg-gray-700 text-white p-3 rounded-lg max-w-md lg:max-w-2xl">
+            <div class="flex items-center mb-1">
+              <span class="text-xs text-gray-300">${currentModel}</span>
+            </div>
+            <p id="${messageId}">${isLoading ? '<span class="animate-pulse">●●●</span>' : content}</p>
+          </div>
+        </div>
+      `;
+      
+      messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      
+      return messageId;
+    }
+    
+    function updateMessage(messageId, content) {
+      const element = document.getElementById(messageId);
+      if (element) {
+        element.innerHTML = formatCodeBlocks(content);
+        // Highlight code blocks
+        element.querySelectorAll('pre code').forEach((block) => {
+          if (window.Prism) {
+            Prism.highlightElement(block);
+          }
+        });
+        document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+      }
+    }
+    
+    function formatCodeBlocks(text) {
+      // Check if text contains code patterns
+      const hasCode = /```|def \w+\(|import \w+|class \w+|function \w+\(|console\.log|print\(/.test(text);
+      
+      if (hasCode) {
+        // Format code blocks with Prism
+        let formatted = text.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+          return `<pre><code class="language-${lang || 'text'}">${code.trim()}</code></pre>`;
+        });
+        
+        // Handle inline code
+        formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        
+        // Convert remaining newlines to breaks
+        formatted = formatted.replace(/\n(?![\s\S]*<\/(?:pre|code)>)/g, '<br>');
+        
+        return formatted;
+      } else {
+        // Just convert newlines to breaks for regular text
+        return text.replace(/\n/g, '<br>');
+      }
+    }
+    
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+    
+    // Profile menu toggle (global function)
+    window.toggleProfile = function() {
+      const panel = document.getElementById('profilePanel');
+      panel.classList.toggle('translate-x-full');
+    };
+    
+    // Close modal when clicking outside
+    document.addEventListener('click', (e) => {
+      const modal = document.getElementById('guest-prompt-modal');
+      if (e.target === modal) {
+        hideGuestPrompt();
+      }
+    });
+    
+    // Hide profile panel on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const panel = document.getElementById('profilePanel');
+        if (!panel.classList.contains('translate-x-full')) {
+          toggleProfile();
+        }
+      }
+    });
+    
+    // Show modal every 1 minute for guests
+    if (!isAuthenticated) {
+      setInterval(() => {
+        if (!localStorage.getItem('guestModalDismissed')) {
+          showGuestPrompt();
+        }
+      }, 60000); // 1 minute
+      
+      // Show initially after 3 seconds
+      setTimeout(() => {
+        if (!localStorage.getItem('guestModalDismissed')) {
+          showGuestPrompt();
+        }
+      }, 3000);
+    }
+  </script>
+  
+  {% include 'components/guest_prompt.html' %}
+{% endblock %}

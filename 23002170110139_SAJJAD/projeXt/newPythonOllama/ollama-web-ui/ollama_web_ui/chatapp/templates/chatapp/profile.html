@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<link href="{% static 'chatapp/css/output.css' %}" rel="stylesheet">
+<div class="min-h-screen bg-gray-900 text-white p-6">
+  <div class="max-w-2xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold">Profile</h1>
+      <a href="/" class="text-blue-400 hover:text-blue-300">← Back to Chat</a>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+      <div class="flex items-center space-x-4 mb-6">
+        {% if request.user.profile_picture %}
+          <img src="{{ request.user.profile_picture.url }}" alt="Profile Pic" class="w-20 h-20 rounded-full border-4 border-blue-500">
+        {% else %}
+          <div class="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold">
+            {{ request.user.username|first|upper }}
+          </div>
+        {% endif %}
+        <div>
+          <h2 class="text-2xl font-semibold">{{ request.user.username }}</h2>
+          <p class="text-gray-400">{{ request.user.email }}</p>
+          <p class="text-sm text-gray-500">Member since {{ request.user.date_joined|date:"F Y" }}</p>
+        </div>
+      </div>
+
+      <form method="post" enctype="multipart/form-data" class="space-y-6">
+        {% csrf_token %}
+        
+        <!-- Profile Picture -->
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Profile Picture</label>
+          <input type="file" name="profile_picture" accept="image/*" 
+                 class="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+        </div>
+
+        <!-- Personal Information -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+            <input type="email" name="email" value="{{ request.user.email }}" 
+                   class="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Phone</label>
+            <input type="tel" name="phone" value="{{ request.user.phone|default:'' }}" 
+                   class="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Gender</label>
+            <select name="gender" class="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
+              <option value="">Select Gender</option>
+              <option value="M" {% if request.user.gender == 'M' %}selected{% endif %}>Male</option>
+              <option value="F" {% if request.user.gender == 'F' %}selected{% endif %}>Female</option>
+              <option value="O" {% if request.user.gender == 'O' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Date of Birth</label>
+            <input type="date" name="dob" value="{{ request.user.dob|date:'Y-m-d'|default:'' }}" 
+                   class="w-full bg-gray-700 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="flex space-x-4">
+          <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-medium">
+            Update Profile
+          </button>
+          <button type="button" id="reset-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded font-medium">
+            Reset
+          </button>
+        </div>
+      </form>
+
+      <div class="border-t border-gray-700 pt-6">
+        <button id="logout-btn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium">
+          Logout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{% url "logout" %}';
+    
+    const csrfToken = document.createElement('input');
+    csrfToken.type = 'hidden';
+    csrfToken.name = 'csrfmiddlewaretoken';
+    csrfToken.value = '{{ csrf_token }}';
+    
+    form.appendChild(csrfToken);
+    document.body.appendChild(form);
+    form.submit();
+  });
+
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    location.reload();
+  });
+</script>
+{% endblock %}
